@@ -1,0 +1,295 @@
+#!/usr/bin/ksh
+# attempt to replace OI hipsters sysidtool and provide for other SunOS systems a more simple way to create hands-off zone configs
+# written 2015-12-04, Olaf Bohlen <olbohlen@eenfach.de>
+
+# > On Apr 14, 2015, at 9:21 AM, Dan McDonald <danmcd@omniti.com> wrote:
+# >
+# > Our zones are like our global post-ISO/Kayak -- you're on your own. No networking and root password == empty. It was a deliberate move from the inception of OmniOS.
+
+# I'm going to correct my previous statement.
+
+# We have for new installs the "initial-boot" configuration. It's simple: put shell commands in /.initialboot prior to the node's (or zone's) first boot, and the initial-boot 
+# service runs just one time, executing those commands. The Kayak installer will add things into /.initialboot if required. One's zone can have $ZONEROOT/.initialboot scribbled prior to its first boot if need be.
+
+# Dan
+
+
+#(543) oldn90700:/export/zones/student11/root/etc# ls -l .U*
+#-rw-------   1 root     root           0 Dec  4 13:43 .UNCONFIGURED
+#(544) oldn90700:/export/zones/student11/root/etc# rm .U*   
+#(545) oldn90700:/export/zones/student11/root/etc# cd
+
+# function list
+# FIXME: to be done: setup_ns_ldap
+###
+
+runcheck() {
+    # prevent that we will be called twice 
+    if [ x$(svcprop -p config/finished ${SMF_FMRI}) == xtrue ]; then
+	# we are already done
+	exit 0
+    fi
+}
+
+finish() {
+    rm -f /etc/.UNCONFIGURED
+    svccfg -s ${SMF_FMRI} "setprop config/finished=true"
+    svccfg -s ${SMF_FMRI} "refresh"
+    log_msg INFO "sysding finished"
+}
+
+log_msg() {
+    # log messages to a file for later review, also write to stdout
+    typeset my_tstamp
+    typeset my_logfile
+    typeset my_level
+    typeset my_msg
+
+    my_level="$1"
+    my_msg="$2"
+
+    my_tstamp=$(date "+%b %e %H:%M:%S")
+    my_logfile=/var/log/sysding.log
+
+    printf "%s %s %s: %s\n" "${my_tstamp}" "$(uname -n)" "${my_level}" "${my_msg}" | tee -a "${my_logfile}"
+}
+
+setup_nfs4domain() {
+    # if needed set nfsv4 domain - if not run, the domain is left blank which means the DNS domain name is used
+    typeset def_domain
+
+    def_domain=$1
+
+    svccfg -s svc:/network/nfs/mapid:default "setprop nfs-props/nfsmapid_domain = astring: ${def_domain}"
+    svccfg -s svc:/network/nfs/mapid:default refresh
+}
+
+setup_user_password() {
+    # set specified users password to specified hash
+    typeset def_username
+    typeset def_pwhash
+    typeset cmd_out
+    typeset rt
+
+    def_username=$1
+
+    def_pwhash=$2
+
+    if [ "x${def_pwhash}" == "x" ]; then
+	log_msg ERROR "missing password hash, cannot set password for ${def_username}"
+	return 1
+    fi
+
+    cmd_out=$(printf ",s,^${def_username}:[^:.]*:,${def_username}:${def_pwhash}:,g\nw\nq\n" | ed /etc/shadow 2>&1)
+    rt=$?
+    log_msg DEBUG "rt of ed is ${rt}"
+    if [ ${rt} -gt 0 ]; then
+	log_msg ERROR "modify of ${def_username}s password failed: ${cmd_out}"
+    fi
+
+    return ${rt}
+}
+
+setup_ipmp() {
+    # set up ipmp on already configured NICs (setup_interface needs to be run first for lower links)
+    typeset def_ipmp
+    typeset def_nica
+    typeset def_nicb
+    typeset cmd_out
+    typeset rt
+
+    def_ipmp=$1
+    def_nica=$2
+    def_nicb=$3
+
+    rt=0
+
+    cmd_out=$( ipadm create-ipmp -i ${def_nica},${def_nicb} ${def_ipmp} 2>&1 )
+    if [ $? -gt 0 ]; then
+	log_msg ERROR "creating IPMP failed with: ${cmd_out}"
+	rt=1
+    fi
+    cmd_out=""
+    
+    return ${rt}
+
+}
+
+setup_interface() {
+    # set up a network interface (may be called more than one time)
+    typeset def_nic
+    typeset def_obj # suffix like /v4
+    typeset def_addr # address with prefix/cidr netmask
+    typeset cmd_out
+    typeset rt
+    
+    def_nic=$1
+    def_obj=$2
+    def_addr=$3
+
+    rt=0
+
+    # short "primary nic" hack. if def_nic is set to PRIMARY, look up first link
+    if [ x${def_nic} == xPRIMARY ]; then
+	def_nic=$( dladm show-link -p -o link | head -1 )
+    fi
+
+    # check if NIC is valid
+    if ! dladm show-link -p -o link ${def_nic} 2>&1 >/dev/null; then
+	log_msg ERROR "specified link ${def_nic} does not exist"
+	return 1
+    fi
+    
+    ipadm create-if ${def_nic}
+
+    # is def_addr specified as dhcp, then configure it that way :)
+    if [ "x${def_addr}" == "xdhcp" ]; then
+	cmd_out=$( ipadm create-addr -T dhcp ${def_nic}/${def_obj} 2>&1 )
+	if [ $? -gt 0 ]; then 
+	    log_msg ERROR "failed to set up dhcp: ${cmd_out}"
+	    rt=1
+	fi
+	cmd_out=""
+    else
+	cmd_out=$( ipadm create-addr -T static -a local=${def_addr} ${def_nic}/${def_obj} 2>&1 )
+	if [ $? -gt 0 ]; then 
+	    log_msg ERROR "failed to set up dhcp: ${cmd_out}"
+	    rt=1
+	fi
+	cmd_out=""
+    fi
+    
+    return ${rt}
+}
+
+setup_ns_dns() {
+    # set up nameservice switch for DNS
+    typeset def_domain
+    typeset def_search
+    typeset def_nsaddr
+    typeset tmpval
+    typeset svc_search
+    
+    
+    rt=0
+
+    def_domain="$1"
+    def_search="$2"
+    def_nsaddr="$3"
+
+    # if we need the svc_search string, we need the search domains in double quotes
+    svc_search=$( echo ${def_search} | sed -e 's/ /" "/g' )
+
+    # check for nscfg, if found we use svccfg for configuration - else we edit flat files in /etc
+
+    if [ -x /usr/sbin/nscfg ]; then
+	# configure with svccfg (on Solaris 11.x)
+	svccfg -s network/dns/client <<EOF
+setprop config/search = astring: ("${svc_search}")
+setprop config/nameserver = net_address: (${def_nsaddr})
+select network/dns/client:default
+refresh
+quit
+EOF
+	svccfg -s system/name-service/switch <<EOF
+setprop config/host = astring: "files dns"
+select system/name-service/switch:default
+refresh
+quit
+EOF
+	nscfg export svc:/network/dns/client:default
+	svcadm enable svc:/network/dns/client
+
+	svcadm enable svc:/network/name-service/switch
+    else
+	cat >/etc/resolv.conf <<EOF
+domain ${def_domain}
+search ${def_search}
+EOF
+	for tmpval in ${def_nsaddr}; do
+	    printf "nameserver %s\n" ${tmpval} >>/etc/resolv.conf
+	done
+	cp /etc/nsswitch.dns /etc/nsswitch.conf
+	svcadm restart svc:/system/name-service-cache
+    fi
+    
+    return ${rt}
+
+}
+
+setup_timezone() {
+    # set up zones timezone
+    typeset def_tz
+    typeset rt
+
+    def_tz="$1"
+    rt=0
+
+    if ! [ -f /usr/share/lib/zoneinfo/${def_tz} ]; then
+	# specfied timezone is invalid, reverting to UTC
+	log_error "specified timezone ${def_tz} not installed or invalid, reverting to UTC"
+	def_tz="UTC"
+	rt=42
+
+    fi
+
+    printf ",g,^TZ=,d\na\nTZ=%s\n.\nw\nq\n" "${def_tz}" | ed /etc/default/init
+    
+    return ${rt}
+}
+
+setup_locale() {
+    # set up zones default locale
+    typeset def_locale
+    typeset rt
+
+    def_locale="$1"
+    rt=0
+
+    if ! locale -a | egrep "^${def_locale}$$" 2>&1 >/dev/null ; then
+	# selected locale is not installed - fall back to C and log error
+	log_error "specified locale ${def_locale} not installed, reverting to C"
+	def_local="C"
+	rt=42
+    fi
+    
+    printf ",g,^LANG=,d\na\nLANG=%s\n.\nw\nq\n" "${def_locale}" | ed /etc/default/init
+
+    return ${rt}
+}
+
+
+## main ##
+
+# include SMF 
+. /lib/svc/share/smf_include.sh
+
+typeset rebootargs
+rebootargs=""
+
+
+# first check if we have been called in the past
+runcheck
+
+# source the "config" file, which is actually a script calling functions defined here.
+. /etc/sysding.conf
+
+# disable service and set a lock in a smf property
+finish
+
+# reboot to apply changes to /etc/default/init -- except we are in a Solaris miniroot (install cd)
+# the SVR4 pkg SUNWsibi is only installed there, so check for it
+# we also check if we need "-- net" as bootargs (network mounted / for example)
+
+if [ -f /.cache ]; then
+    rebootargs=" -- net "
+fi
+
+if mount -p | grep ":.* / " 2>&1 >/dev/null; then
+    rebootargs=" -- net "
+fi
+
+if ! pkginfo -q SUNWsibi; then
+    log_msg INFO "rebooting because /etc/default/init changed"
+    reboot -l ${rebootargs}
+fi
