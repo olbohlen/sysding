@@ -162,6 +162,25 @@ setup_interface() {
     return ${rt}
 }
 
+setup_route() {
+   # set up route (may be called more than one time)
+   typeset def_tgt
+   typeset def_dst
+  
+   def_tgt=$1
+   def_dst=$2
+
+   rt=0
+
+   cmd_out=$( route -p add ${def_tgt} ${def_dst} 2>&1 )
+   if [ $? -gt 0 ]; then
+       log_msg ERROR "failed to set up dhcp: ${cmd_out}"
+       rt=1
+   fi
+
+   return ${rt}
+}
+
 setup_ns_dns() {
     # set up nameservice switch for DNS
     typeset def_domain
