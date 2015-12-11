@@ -22,6 +22,7 @@
 # function list
 # FIXME: to be done: setup_ns_ldap
 ###
+REBOOT_NEEDED=no
 
 runcheck() {
     # prevent that we will be called twice 
@@ -253,7 +254,9 @@ setup_timezone() {
     fi
 
     printf ",g,^TZ=,d\na\nTZ=%s\n.\nw\nq\n" "${def_tz}" | ed /etc/default/init
-    
+
+    REBOOT_NEEDED=yes
+
     return ${rt}
 }
 
@@ -273,6 +276,8 @@ setup_locale() {
     fi
     
     printf ",g,^LANG=,d\na\nLANG=%s\n.\nw\nq\n" "${def_locale}" | ed /etc/default/init
+
+    REBOOT_NEEDED=yes
 
     return ${rt}
 }
@@ -308,7 +313,7 @@ if mount -p | grep ":.* / " 2>&1 >/dev/null; then
     rebootargs=" -- net "
 fi
 
-if ! pkginfo -q SUNWsibi; then
+if [ ! pkginfo -q SUNWsibi -a "${REBOOT_NEEDED}" = "yes" ]; then
     log_msg INFO "rebooting because /etc/default/init changed"
     reboot -l ${rebootargs}
 fi
