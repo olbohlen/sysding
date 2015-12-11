@@ -296,7 +296,7 @@ rebootargs=""
 runcheck
 
 # source the "config" file, which is actually a script calling functions defined here.
-. /etc/sysding.conf
+[ -f /etc/sysding.conf ] && . /etc/sysding.conf
 
 # disable service and set a lock in a smf property
 finish
