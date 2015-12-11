@@ -1,3 +1,17 @@
+INSTALL ?= /usr/gnu/bin/install
+
+all:
+
+install: all
+	$(INSTALL) -d $(DESTDIR)/usr/share/man/man1m
+	$(INSTALL) -d $(DESTDIR)/lib/svc/manifest/system
+	$(INSTALL) -d $(DESTDIR)/lib/svc/method
+	$(INSTALL) -d $(DESTDIR)/etc
+	$(INSTALL) -m 444 sysding.1m $(DESTDIR)/usr/share/man/man1m
+	$(INSTALL) -m 644 sysding.conf $(DESTDIR)/etc
+	$(INSTALL) -m 444 sysding.xml $(DESTDIR)/lib/svc/manifest/system
+	$(INSTALL) -m 555 sysding $(DESTDIR)/lib/svc/method/sysding
+
 ipspkg:
 	rm -rf proto_install
 	mkdir -p proto_install/usr/share/man/man1m
