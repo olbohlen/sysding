@@ -222,10 +222,16 @@ EOF
 
 	svcadm enable svc:/network/name-service/switch
     else
-	cat >/etc/resolv.conf <<EOF
-domain ${def_domain}
-search ${def_search}
-EOF
+	# Recreate empty resolv.conf
+	rm -f /etc/resolv.conf
+	touch /etc/resolv.conf
+	if [ -n "${def_domain}" ] ; then
+		printf "domain ${def_domain}\n" >> /etc/resolv.conf
+	fi
+	if [ -n "${def_search}" ]; then
+		printf "search ${def_search}\n" >> /etc/resolv.conf
+	fi
+	
 	for tmpval in ${def_nsaddr}; do
 	    printf "nameserver %s\n" ${tmpval} >>/etc/resolv.conf
 	done
