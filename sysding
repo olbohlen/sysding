@@ -23,6 +23,7 @@
 # FIXME: to be done: setup_ns_ldap
 ###
 REBOOT_NEEDED=no
+ROOT_PASSWORD_SET=no
 
 runcheck() {
     # prevent that we will be called twice 
@@ -88,6 +89,9 @@ setup_user_password() {
 	log_msg ERROR "modify of ${def_username}s password failed: ${cmd_out}"
     fi
 
+    if [ "${def_username}" = "root" ]; then
+        ROOT_PASSWORD_SET=yes
+    fi
     return ${rt}
 }
 
@@ -306,6 +310,12 @@ runcheck
 
 # disable service and set a lock in a smf property
 finish
+
+# when configuring zone, set root password to empty if it was not set,
+# so that zlogin could proceed
+if [ "`zonename`" != "global" -a "${ROOT_PASSWORD_SET}" = "no" ]; then
+    setup_user_password  "root" "NP"
+fi
 
 # reboot to apply changes to /etc/default/init -- except we are in a Solaris miniroot (install cd)
 # the SVR4 pkg SUNWsibi is only installed there, so check for it
