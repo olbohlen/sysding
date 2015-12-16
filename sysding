@@ -254,6 +254,7 @@ EOF
 setup_timezone() {
     # set up zones timezone
     typeset def_tz
+    typeset def_rtc
     typeset rt
 
     def_tz="$1"
@@ -268,6 +269,10 @@ setup_timezone() {
     fi
 
     printf ",g,^TZ=,d\na\nTZ=%s\n.\nw\nq\n" "${def_tz}" | ed /etc/default/init
+
+    if [ -n "${def_rtc}" -a -f /usr/share/lib/zoneinfo/${def_rtc} ]; then
+        /usr/sbin/rtc -z "${def_rtc}"
+    fi
 
     REBOOT_NEEDED=yes
 
@@ -333,7 +338,9 @@ if mount -p | grep ":.* / " 2>&1 >/dev/null; then
     rebootargs=" -- net "
 fi
 
-if [ ! pkginfo -q SUNWsibi -a "${REBOOT_NEEDED}" = "yes" ]; then
+pkginfo -q SUNWsibi
+status=$?
+if [ "$status" = "1" -a "${REBOOT_NEEDED}" = "yes" ]; then
     log_msg INFO "rebooting because /etc/default/init changed"
     reboot -l ${rebootargs}
 fi
