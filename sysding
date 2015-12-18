@@ -1,29 +1,32 @@
 #!/usr/bin/ksh
 # attempt to replace OI hipsters sysidtool and provide for other SunOS systems a more simple way to create hands-off zone configs
 # written 2015-12-04, Olaf Bohlen <olbohlen@eenfach.de>
-
-# > On Apr 14, 2015, at 9:21 AM, Dan McDonald <danmcd@omniti.com> wrote:
-# >
-# > Our zones are like our global post-ISO/Kayak -- you're on your own. No networking and root password == empty. It was a deliberate move from the inception of OmniOS.
-
-# I'm going to correct my previous statement.
-
-# We have for new installs the "initial-boot" configuration. It's simple: put shell commands in /.initialboot prior to the node's (or zone's) first boot, and the initial-boot 
-# service runs just one time, executing those commands. The Kayak installer will add things into /.initialboot if required. One's zone can have $ZONEROOT/.initialboot scribbled prior to its first boot if need be.
-
-# Dan
+# this was inspired by a comment of Dan McDonald how OmniTI does this job with a /.initialboot script
 
 
-#(543) oldn90700:/export/zones/student11/root/etc# ls -l .U*
-#-rw-------   1 root     root           0 Dec  4 13:43 .UNCONFIGURED
-#(544) oldn90700:/export/zones/student11/root/etc# rm .U*   
-#(545) oldn90700:/export/zones/student11/root/etc# cd
+# CDDL HEADER START
+
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+
+# CDDL HEADER END
+
 
 # function list
 # FIXME: to be done: setup_ns_ldap
 ###
-REBOOT_NEEDED=no
-ROOT_PASSWORD_SET=no
 
 runcheck() {
     # prevent that we will be called twice 
@@ -38,6 +41,9 @@ finish() {
     svccfg -s ${SMF_FMRI} "setprop config/finished=true"
     svccfg -s ${SMF_FMRI} "refresh"
     log_msg INFO "sysding finished"
+
+    # ensure our sysding.conf is 400, as one or more password hashes might be in there
+    [ -f /etc/sysding.conf ] && chmod 400 /etc/sysding.conf
 }
 
 log_msg() {
@@ -85,6 +91,9 @@ setup_user_password() {
     cmd_out=$(printf ",s,^${def_username}:[^:.]*:,${def_username}:${def_pwhash}:,g\nw\nq\n" | ed /etc/shadow 2>&1)
     rt=$?
     log_msg DEBUG "rt of ed is ${rt}"
+
+    # FIXME, ed seems to exit with non-zero all the time?
+
     if [ ${rt} -gt 0 ]; then
 	log_msg ERROR "modify of ${def_username}s password failed: ${cmd_out}"
     fi
@@ -171,6 +180,7 @@ setup_route() {
    # set up route (may be called more than one time)
    typeset def_tgt
    typeset def_dst
+   typeset rt
   
    def_tgt=$1
    def_dst=$2
@@ -179,7 +189,7 @@ setup_route() {
 
    cmd_out=$( route -p add ${def_tgt} ${def_dst} 2>&1 )
    if [ $? -gt 0 ]; then
-       log_msg ERROR "failed to set up dhcp: ${cmd_out}"
+       log_msg ERROR "failed to set up route: ${cmd_out}"
        rt=1
    fi
 
@@ -193,8 +203,8 @@ setup_ns_dns() {
     typeset def_nsaddr
     typeset tmpval
     typeset svc_search
-    
-    
+    typeset rt
+        
     rt=0
 
     def_domain="$1"
@@ -244,7 +254,7 @@ EOF
 
 	# Without this dns/client can stuck in offline state on first boot
 	svcadm disable svc:/network/dns/client
-	svcadn enable svc:/network/dns/client
+	svcadm enable svc:/network/dns/client
     fi
     
     return ${rt}
@@ -307,9 +317,16 @@ setup_locale() {
 # include SMF 
 . /lib/svc/share/smf_include.sh
 
-typeset rebootargs
-rebootargs=""
+# global variables
+REBOOT_NEEDED=no
+ROOT_PASSWORD_SET=no
 
+# local variables
+typeset rebootargs
+typeset status
+
+rebootargs=""
+status=0
 
 # first check if we have been called in the past
 runcheck
@@ -322,7 +339,7 @@ finish
 
 # when configuring zone, set root password to empty if it was not set,
 # so that zlogin could proceed
-if [ "`zonename`" != "global" -a "${ROOT_PASSWORD_SET}" = "no" ]; then
+if [ "$(zonename)" != "global" -a "${ROOT_PASSWORD_SET}" = "no" ]; then
     setup_user_password  "root" "NP"
 fi
 
@@ -340,7 +357,7 @@ fi
 
 pkginfo -q SUNWsibi
 status=$?
-if [ "$status" = "1" -a "${REBOOT_NEEDED}" = "yes" ]; then
+if [ "${status}" = "1" -a "${REBOOT_NEEDED}" = "yes" ]; then
     log_msg INFO "rebooting because /etc/default/init changed"
     reboot -l ${rebootargs}
 fi
