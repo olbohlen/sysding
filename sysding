@@ -244,7 +244,7 @@ EOF
 
 	# Without this dns/client can stuck in offline state on first boot
 	svcadm disable svc:/network/dns/client
-	svcadn enable svc:/network/dns/client
+	svcadm enable svc:/network/dns/client
     fi
     
     return ${rt}
