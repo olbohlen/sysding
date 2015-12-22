@@ -56,6 +56,21 @@ log_msg() {
     printf "%s %s %s: %s\n" "${my_tstamp}" "$(uname -n)" "${my_level}" "${my_msg}" | tee -a "${my_logfile}"
 }
 
+get_user_password() {                                                                                                                                                                                                    
+   # get user password hash
+   typeset def_username
+   
+   def_username=$1
+   
+   if [ "x${def_username}" == "x" ]; then
+        log_msg ERROR "missing username, returning empty hash"
+        printf ""
+   fi
+
+   hash=$(grep "^${def_username}:" /etc/shadow | cut -d : -f 2)
+   printf "%s" ${hash}
+}
+
 setup_nfs4domain() {
     # if needed set nfsv4 domain - if not run, the domain is left blank which means the DNS domain name is used
     typeset def_domain
@@ -322,7 +337,7 @@ finish
 
 # when configuring zone, set root password to empty if it was not set,
 # so that zlogin could proceed
-if [ "`zonename`" != "global" -a "${ROOT_PASSWORD_SET}" = "no" ]; then
+if [ "`zonename`" != "global" -a "${ROOT_PASSWORD_SET}" = "no" -a -z "$(get_user_password root)" ]; then
     setup_user_password  "root" "NP"
 fi
 
