@@ -230,7 +230,7 @@ setup_aggregate() {
 
 
     # check for valid LACP mode
-    if ! echo ${def_lacp} | egrep -q '^(active|passive|off)$'; then
+    if [ x${def_lcap} != xactive -a x${def_lcap} != xpassive -a x${def_lcap} != xoff ]; then
         log_msg ERROR "invalid LACP mode given: ${def_lacp}"
         return 1
     fi
@@ -254,6 +254,7 @@ setup_aggregate() {
     fi
 
     # check if each link exists
+    typeset _link
     for _link in ${def_links}; do
         if ! dladm show-link ${_link} >/dev/null 2>&1; then
             log_msg ERROR "link ${_link} does not exist"
