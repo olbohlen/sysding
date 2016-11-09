@@ -26,6 +26,7 @@
 
 # function list
 # FIXME: to be done: setup_ns_ldap
+# FIXME: setup_ipmp for OI hipster
 ###
 
 runcheck() {
@@ -77,6 +78,18 @@ get_user_password() {
    printf "%s" ${hash}
 }
 
+setup_ns_ldap() {
+    # we need a few arguments, but also already installed ssl certificates if you use TLS
+    # so the user should supply an IPS package containing these certificates and provide the installation path
+    # as argument here
+    typeset def_proto       # ldap or ldaps
+    typeset def_server      # server address list like "server1:port server2:port ..."
+    typeset def_certpath    # path to server certificates
+    typeset def_basedn      # basedn
+    #FIXME: ldap profile foobar?
+    
+}
+
 setup_nfs4domain() {
     # if needed set nfsv4 domain - if not run, the domain is left blank which means the DNS domain name is used
     typeset def_domain
@@ -85,6 +98,45 @@ setup_nfs4domain() {
 
     svccfg -s svc:/network/nfs/mapid:default "setprop nfs-props/nfsmapid_domain = astring: ${def_domain}"
     svccfg -s svc:/network/nfs/mapid:default refresh
+}
+
+setup_user_account() {
+    # create a specified user account
+    typeset def_username
+    typeset def_uid
+    typeset def_gid
+    typeset def_gecos
+    typeset def_home
+    typeset def_shell
+
+    def_username="$1"
+    def_uid="$2"
+    def_gid="$3"
+    def_gecos="$4"
+    def_home="$5"
+    def_shell="$6"
+    
+    rt=0
+
+    # the username is the primary lookup key, so we check it here.
+    # we do not check for uid, because multiple usernames for one uid are fine
+    if grep "^${def_username}:" >/dev/null 2>&1; then
+	log_msg ERROR "username ${def_username} already exists"
+	return 1
+    fi
+    
+    printf "%s:x:%s:%s:%s:%s:%s\n" "${def_username}" ${def_uid} ${def_gid} "${def_gecos}" "${def_home}" "${def_shell}" >>/etc/passwd
+    rt=$?
+    if [ ${rt} -gt 0 ]; then
+	log_msg ERROR "failed writing user record for ${def_username} to /etc/passwd..."
+	return ${rt}
+    fi
+    printf "%s:NP:::::::\n" >>/etc/shadow
+    rt=$?
+    if [ ${rt} -gt 0 ]; then
+	log_msg ERROR "failed writing shadow entry for user ${def_username}, please check /etc/passwd and /etc/shadow!"
+    fi
+    return ${rt}
 }
 
 setup_user_password() {
@@ -192,13 +244,16 @@ setup_interface() {
 }
 
 setup_route() {
+   # FIXME: need to be able to specify inet6 routes (-inet6)
    # set up route (may be called more than one time)
    typeset def_tgt
    typeset def_dst
+   typeset def_proto
    typeset rt
   
    def_tgt=$1
    def_dst=$2
+   def_proto=$3
 
    rt=0
 
