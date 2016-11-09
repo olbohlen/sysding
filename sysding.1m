@@ -90,6 +90,26 @@ creates a persistant route for "target" via "router"
 .sp
 .ne 2
 .na
+\fB\fBsetup_aggregate "aggregate_name" "lacp_mode" "policy" "link" ["link2" ...]\fR\fR
+.ad
+.sp .6
+.RS 4n
+create aggregate device over given links with given LACP mode and hashing policy
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBsetup_vlan "vlan_name" "vlan_id" "link"\fR\fR
+.ad
+.sp .6
+.RS 4n
+create VLAN device on given link with given VLAN ID
+.RE
+
+.sp
+.ne 2
+.na
 \fB\fBsetup_ipmp "ipmp interface name" "nic1" "nic2"\fR\fR
 .ad
 .sp .6
