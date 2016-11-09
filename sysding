@@ -211,6 +211,109 @@ setup_route() {
    return ${rt}
 }
 
+setup_aggregate() {
+    # set up aggregate interface (may be called as many times as you need aggregate interfaces)
+    typeset def_link
+    typeset def_lacp
+    typeset def_policy
+    typeset def_links
+    typeset links_arg
+
+    rt=0
+
+    def_link="$1"
+    def_lacp="$2"
+    def_policy="$3"
+    shift 3
+    def_links="$@"
+    links_arg=""
+
+
+    # check for valid LACP mode
+    if [ x${def_lcap} != xactive -a x${def_lcap} != xpassive -a x${def_lcap} != xoff ]; then
+        log_msg ERROR "invalid LACP mode given: ${def_lacp}"
+        return 1
+    fi
+
+    # check for valid policy
+    if ! echo ${def_policy} | egrep -q '^(L[2-4],?)+$'; then
+        log_msg ERROR "invalid policy given: ${def_policy}"
+        return 1
+    fi
+
+    # check for valid def_links arg
+    if [ -z "${def_links}" ]; then
+        log_msg ERROR "no links given"
+        return 1
+    fi
+
+    # check if aggregate already exists
+    if dladm show-aggr ${def_link} >/dev/null 2>&1; then
+        log_msg ERROR "aggregate interface ${def_link} already exists"
+        return 1
+    fi
+
+    # check if each link exists
+    typeset _link
+    for _link in ${def_links}; do
+        if ! dladm show-link ${_link} >/dev/null 2>&1; then
+            log_msg ERROR "link ${_link} does not exist"
+            return 1
+        fi
+
+        links_arg="${links_arg} -d ${_link}"
+    done
+
+    # create aggregate interface
+    cmd_out=$( dladm create-aggr -L ${def_lacp} -P ${def_policy} ${links_arg} ${def_link} 2>&1 )
+    if [ $? -gt 0 ]; then
+        log_msg ERROR "failed to create aggregate link: ${cmd_out}"
+        rt=1
+    fi
+
+    return ${rt}
+}
+
+setup_vlan() {
+    # set up VLAN interface (may be called as many times as you need VLAN interfaces)
+    typeset def_link
+    typeset def_vlan
+    typeset def_dev
+
+    rt=0
+
+    def_link="$1"
+    def_vlan="$2"
+    def_dev="$3"
+
+    # check for numerical VLAN id
+    if ! echo ${def_vlan} | egrep -q '^[0-9]+$'; then
+        log_msg ERROR "VLAN id is not numerical: ${def_vlan}"
+        return 1
+    fi
+
+    # check if device exists
+    if ! dladm show-link ${def_dev} >/dev/null 2>&1; then
+        log_msg ERROR "specified device ${def_dev} does not exist"
+        return 1
+    fi
+
+    # check if vlan already exists
+    if dladm show-vlan ${def_link} >/dev/null 2>&1; then
+        log_msg ERROR "specified VLAN link ${def_link} already exists"
+        return 1
+    fi
+
+    # create VLAN interface
+    cmd_out=$( dladm create-vlan -v ${def_vlan} -l ${def_dev} ${def_link} 2>&1 )
+    if [ $? -gt 0 ]; then
+        log_msg ERROR "failed to create VLAN link: ${cmd_out}"
+        rt=1
+    fi
+
+    return ${rt}
+}
+
 setup_ns_dns() {
     # set up nameservice switch for DNS
     typeset def_domain
