@@ -63,8 +63,7 @@ log_msg() {
     printf "%s %s %s: %s\n" "${my_tstamp}" "$(uname -n)" "${my_level}" "${my_msg}" | tee -a "${my_logfile}"
 }
 
-get_user_password() {                                                                                                                                                                                                    
-   # get user password hash
+get_user_password() {                                                                                               # get user password hash
    typeset def_username
    
    def_username=$1
@@ -76,6 +75,47 @@ get_user_password() {
 
    hash=$(grep "^${def_username}:" /etc/shadow | cut -d : -f 2)
    printf "%s" ${hash}
+}
+
+get_dhcpsysding() {
+    # FIXME: work in progress
+    # we can read a remote sysding.conf by tftp, if we boot via DHCP
+    typeset remotefile
+    typeset bootsrv
+    typeset rt
+
+    # request bootsrv host
+    bootsrv=$(/sbin/dhcpinfo BootSrvA)
+    
+    # first get general sysding.conf
+    curl tftp://${bootsrv}/sysding.conf
+
+    # now get this nodes sysding-<mac of dhcp interface>.conf 
+    curl tftp://${bootsrv}/sysding-.conf >sysding.conf.node
+
+    . /tmp/sysding.conf
+    . /tmp/sysding.conf.node
+}
+
+get_remotesysding() {
+    # FIXME: work in progress
+    # this function fetches a sysding.conf via curl from a remote (web)server
+    # example setup should be:
+    # you boot via pxe-boot, fetch a sysding.conf via get_dhcpsysding() and 
+    # get a special global variable set REMSYSDING, which contains an URL to
+    # the final sysding.conf
+    typeset remoteurl
+    typeset rt
+
+    if [ ! "x${REMSYSDING}" == "x" ]; then
+	remoteurl=${REMSYSDING}
+    else
+	log_msg INFO "no REMSYSDING given, ignoring"
+	return 0
+    fi
+
+    curl ${remoteurl} >/tmp/sysding.conf.remote
+    . /tmp/sysding.conf.remote
 }
 
 setup_ns_ldap() {
@@ -223,6 +263,16 @@ setup_interface() {
     
     ipadm create-if ${def_nic}
 
+    # https://github.com/olbohlen/sysding/issues/2
+    # check if def_addr is IPv6 and prepare a addrconf interface first.
+    echo ${def_addr} | egrep ":[0-9]*:" >/dev/null 2>&1
+    if [ $? -gt 0 ]; then
+	# it has at least two colons, it is a IPv6 addr
+	# so we create a addrconf object with the users specified object name plus
+	# the "link" suffix, for link-local-address
+	ipadm create-addr -T addrconf ${def_nic}/${def_obj}link
+    fi
+    
     # is def_addr specified as dhcp, then configure it that way :)
     if [ "x${def_addr}" == "xdhcp" ]; then
 	cmd_out=$( ipadm create-addr -T dhcp ${def_nic}/${def_obj} 2>&1 )
@@ -244,20 +294,27 @@ setup_interface() {
 }
 
 setup_route() {
-   # FIXME: need to be able to specify inet6 routes (-inet6)
    # set up route (may be called more than one time)
    typeset def_tgt
    typeset def_dst
-   typeset def_proto
    typeset rt
+   typeset ipvers
   
    def_tgt=$1
    def_dst=$2
-   def_proto=$3
 
    rt=0
 
-   cmd_out=$( route -p add ${def_tgt} ${def_dst} 2>&1 )
+   # https://github.com/olbohlen/sysding/issues/1
+   # check if def_addr is IPv6 and force the -inet6 flag for route(1M)
+   echo ${def_dst} | egrep ":[0-9]*:" >/dev/null 2>&1
+   if [ $? -gt 0 ]; then
+       # it has at least two colons, it is a IPv6 addr
+       ipvers="-inet6"
+   fi
+
+   
+   cmd_out=$( route -p add ${ipvers} ${def_tgt} ${def_dst} 2>&1 )
    if [ $? -gt 0 ]; then
        log_msg ERROR "failed to set up route: ${cmd_out}"
        rt=1
@@ -484,6 +541,35 @@ setup_locale() {
     return ${rt}
 }
 
+setup_zpool() {
+    # setup a zpool on specified disks
+    typeset def_poolname
+    typeset def_devspec
+    typeset rt
+
+    cmd_out=$( zpool create ${def_devspec} 2>&1 )
+    if [ $? -gt 0 ]; then
+	log_msg ERROR "failed to set up zpool: ${cmd_out}"
+	rt=1
+    fi
+    
+    return ${rt}
+}
+
+setup_zfs() {
+    # setup a zfs
+    typeset def_fsname
+    typeset def_opts
+    typeset rt
+
+    cmd_out=$( zfs create ${def_opts} ${def_fsname} 2>&1 )
+    if [ $? -gt 0 ]; then
+	log_msg ERROR "failed to set up zfs: ${cmd_out}"
+	rt=1
+    fi
+    
+    return ${rt}
+}
 
 ## main ##
 
