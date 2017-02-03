@@ -118,7 +118,7 @@ setup_user_account() {
 	log_msg ERROR "failed writing user record for ${def_username} to /etc/passwd..."
 	return ${rt}
     fi
-    printf "%s:NP:::::::\n" >>/etc/shadow
+    printf "%s:NP:::::::\n" "${def_username}" >>/etc/shadow
     rt=$?
     if [ ${rt} -gt 0 ]; then
 	log_msg ERROR "failed writing shadow entry for user ${def_username}, please check /etc/passwd and /etc/shadow!"
