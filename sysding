@@ -212,9 +212,9 @@ setup_interface() {
 
     # https://github.com/olbohlen/sysding/issues/2
     # check if def_addr is IPv6 and prepare a addrconf interface first.
-    echo ${def_addr} | egrep ":[0-9]*:" >/dev/null 2>&1
+    echo ${def_addr} | egrep ":" >/dev/null 2>&1
     if [ $? -gt 0 ]; then
-	# it has at least two colons, it is a IPv6 addr
+	# it has at least one colon, it is a IPv6 addr
 	# so we create a addrconf object with the users specified object name plus
 	# the "link" suffix, for link-local-address
 	ipadm create-addr -T addrconf ${def_nic}/${def_obj}link
@@ -254,7 +254,7 @@ setup_route() {
 
    # https://github.com/olbohlen/sysding/issues/1
    # check if def_addr is IPv6 and force the -inet6 flag for route(1M)
-   echo ${def_dst} | egrep ":[0-9]*:" >/dev/null 2>&1
+   echo ${def_dst} | egrep ":" >/dev/null 2>&1
    if [ $? -gt 0 ]; then
        # it has at least two colons, it is a IPv6 addr
        ipvers="-inet6"
