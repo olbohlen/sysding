@@ -256,7 +256,7 @@ setup_route() {
    # check if def_addr is IPv6 and force the -inet6 flag for route(1M)
    echo ${def_dst} | egrep ":" >/dev/null 2>&1
    if [ $? -gt 0 ]; then
-       # it has at least two colons, it is a IPv6 addr
+       # it has at least one colon, it is a IPv6 addr
        ipvers="-inet6"
    fi
 
