@@ -77,59 +77,6 @@ get_user_password() {                                                           
    printf "%s" ${hash}
 }
 
-get_dhcpsysding() {
-    # FIXME: work in progress
-    # we can read a remote sysding.conf by tftp, if we boot via DHCP
-    typeset remotefile
-    typeset bootsrv
-    typeset rt
-
-    # request bootsrv host
-    bootsrv=$(/sbin/dhcpinfo BootSrvA)
-    
-    # first get general sysding.conf
-    curl tftp://${bootsrv}/sysding.conf
-
-    # now get this nodes sysding-<mac of dhcp interface>.conf 
-    curl tftp://${bootsrv}/sysding-.conf >sysding.conf.node
-
-    . /tmp/sysding.conf
-    . /tmp/sysding.conf.node
-}
-
-get_remotesysding() {
-    # FIXME: work in progress
-    # this function fetches a sysding.conf via curl from a remote (web)server
-    # example setup should be:
-    # you boot via pxe-boot, fetch a sysding.conf via get_dhcpsysding() and 
-    # get a special global variable set REMSYSDING, which contains an URL to
-    # the final sysding.conf
-    typeset remoteurl
-    typeset rt
-
-    if [ ! "x${REMSYSDING}" == "x" ]; then
-	remoteurl=${REMSYSDING}
-    else
-	log_msg INFO "no REMSYSDING given, ignoring"
-	return 0
-    fi
-
-    curl ${remoteurl} >/tmp/sysding.conf.remote
-    . /tmp/sysding.conf.remote
-}
-
-setup_ns_ldap() {
-    # we need a few arguments, but also already installed ssl certificates if you use TLS
-    # so the user should supply an IPS package containing these certificates and provide the installation path
-    # as argument here
-    typeset def_proto       # ldap or ldaps
-    typeset def_server      # server address list like "server1:port server2:port ..."
-    typeset def_certpath    # path to server certificates
-    typeset def_basedn      # basedn
-    #FIXME: ldap profile foobar?
-    
-}
-
 setup_nfs4domain() {
     # if needed set nfsv4 domain - if not run, the domain is left blank which means the DNS domain name is used
     typeset def_domain
@@ -543,9 +490,10 @@ setup_locale() {
 
 setup_zpool() {
     # setup a zpool on specified disks
-    typeset def_poolname
     typeset def_devspec
     typeset rt
+
+    def_devspec="$*"
 
     cmd_out=$( zpool create ${def_devspec} 2>&1 )
     if [ $? -gt 0 ]; then
@@ -558,11 +506,12 @@ setup_zpool() {
 
 setup_zfs() {
     # setup a zfs
-    typeset def_fsname
     typeset def_opts
     typeset rt
 
-    cmd_out=$( zfs create ${def_opts} ${def_fsname} 2>&1 )
+    def_opts="$*"
+    
+    cmd_out=$( zfs create ${def_opts} 2>&1 )
     if [ $? -gt 0 ]; then
 	log_msg ERROR "failed to set up zfs: ${cmd_out}"
 	rt=1
