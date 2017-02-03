@@ -59,11 +59,21 @@ If this function is not called, the NFS4 Domain will be set dynamically. (via DN
 .sp
 .ne 2
 .na
-\fB\fBsetup_user_password "user" "hash"\fR\fR
+\fB\fBsetup_user_account "username" <uid> <gid> "gecos" "/home" "/bin/shell"\fR\fR
 .ad
 .sp .6
 .RS 4n
-sets users "user" password-hash to the specified one in "hash"
+This function creates a user account, all parameters are mandatory.
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBsetup_user_password "username" "hash"\fR\fR
+.ad
+.sp .6
+.RS 4n
+sets users "username" password-hash to the specified one in "hash"
 .RE
 
 .sp
@@ -127,6 +137,27 @@ configures a ipmp interfaces with the lower-interfaces "nic1" and "nic2"
 configures DNS as primary name-service within the "domain.dom" domain. You may specify 
 one or more search domains in double-quotes like "domain.dom search1.dom enterprize.biz" and
 you may specify one or more name-server addresses like "172.20.0.53 172.21.0.53".
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBsetup_zpool "poolname" "device spec"\fR\fR
+.ad
+.sp .6
+.RS 4n
+create a zpool "poolname" using the "device spec". "device spec" are valid
+parameters to zpool create, for example "mirror c0t0d0 c0t1d0".
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBsetup_zfs "filesystem"\fR\fR
+.ad
+.sp .6
+.RS 4n
+creates a ZFS filesystem, which is specified as "filesystem". You can also specify all valid parameters to "zfs create", i.e.: "-V 20G rpool/vol1" or "-o mountpoint=legacy rpool/stuff"
 .RE
 
 .SH EXAMPLES
